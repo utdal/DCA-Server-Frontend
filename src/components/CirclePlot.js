@@ -1,33 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Plot from 'react-plotly.js';
 
-export const CirclePlot = ({ mappedDi, chain, selectedDI}) => {
-    let nodes;
+const MIN_CIRCLE_PAIR_COUNT = 20;
+const RESIDUE_TRACE_NAME = 'Residue Points';
+const CENTER_RESET_TRACE_NAME = 'Center Reset';
+
+export const CirclePlot = ({ mappedDi, selectedDI, displayedDI }) => {
     const radius1 = 1.5;
     const radius2 = 1.7;
-    let edges;
-    if (selectedDI) {
-        edges = selectedDI.map(i => mappedDi.mapped_di[i]);
-        const residues = edges.flat();
-        nodes = Math.max(...residues) + 1;
-    } else {
-        edges = mappedDi.mapped_di;
-        nodes = 100;
-    }
+
+    const edgeIndexes = useMemo(() => {
+        if (!mappedDi || !mappedDi.mapped_di) return [];
+
+        if (displayedDI && displayedDI.length) return displayedDI;
+        if (selectedDI && selectedDI.length) return selectedDI;
+
+        const pairCount = Math.min(mappedDi.mapped_di.length, MIN_CIRCLE_PAIR_COUNT);
+        return Array.from({ length: pairCount }, (_, index) => index);
+    }, [displayedDI, mappedDi, selectedDI]);
+
+    const edges = useMemo(() => {
+        if (!mappedDi || !mappedDi.mapped_di) return [];
+        return edgeIndexes.map(index => mappedDi.mapped_di[index]).filter(Boolean);
+    }, [edgeIndexes, mappedDi]);
     
 
     return (
         <div>
             
-            <ChordDiagram nodes={nodes} edges={edges} radius1={radius1} radius2={radius2} />
+            <ChordDiagram edges={edges} radius1={radius1} radius2={radius2} />
         </div>
     );
 };
 
-export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
-    const [plotData, setPlotData] = useState(null);
+export const ChordDiagram = ({ edges, radius1, radius2 }) => {
+    const [hoveredResidue, setHoveredResidue] = useState(null);
+    const [pinnedResidue, setPinnedResidue] = useState(null);
+
+    const residueIds = useMemo(() => {
+        return Array.from(new Set(edges.flatMap(([i, j]) => [i, j]))).sort((a, b) => a - b);
+    }, [edges]);
+
+    const residueSet = useMemo(() => new Set(residueIds), [residueIds]);
 
     useEffect(() => {
+        if (hoveredResidue !== null && !residueSet.has(hoveredResidue)) setHoveredResidue(null);
+        if (pinnedResidue !== null && !residueSet.has(pinnedResidue)) setPinnedResidue(null);
+    }, [hoveredResidue, pinnedResidue, residueSet]);
+
+    const activeResidue = pinnedResidue !== null ? pinnedResidue : hoveredResidue;
+
+    const plotData = useMemo(() => {
+        const nodes = residueIds.length;
+        if (!nodes) return [];
+
         const offset = Math.PI * (0.5 - 1 / nodes);
         const theta = Array.from({ length: nodes }, (_, i) => -2 * Math.PI * i / nodes + offset);
 
@@ -36,6 +62,7 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
 
         const x2 = theta.map(t => Math.cos(t) * radius2);
         const y2 = theta.map(t => Math.sin(t) * radius2);
+        const residueToNode = new Map(residueIds.map((residue, index) => [residue, index]));
 
         const labelInterval = Math.ceil(nodes/5); 
         const labeledNodes = Array.from({ length: nodes }, (_, i) => (i % labelInterval === 0) ? i : null).filter(i => i !== null);
@@ -48,7 +75,9 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
             marker: { size: 6, color: 'black' },
             showlegend: false,
             hoverinfo: 'text',
-            text: Array.from({ length: nodes }, (_, i) => `Residue ${i+1}`),
+            text: residueIds.map(residue => `Residue ${residue + 1}`),
+            customdata: residueIds,
+            name: RESIDUE_TRACE_NAME,
         };
 
         const nodePlot2 = {
@@ -56,10 +85,11 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
             mode: 'text',
             x: x2,
             y: y2,
-            text: Array.from({ length: nodes }, (_, i) => labeledNodes.includes(i) ? `${i+1}` : ''),
+            text: residueIds.map((residue, index) => labeledNodes.includes(index) ? `${residue + 1}` : ''),
             textposition: 'middle center',
             showlegend: false,
             hoverinfo: 'none', 
+            name: 'Residue Labels',
             textfont: {
                 size: 12,
                 color: 'black',
@@ -67,21 +97,37 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
         };
 
         const curves = edges.map(([i, j, w]) => {
-            const arcPoints = generateArcPoints(x1[i], y1[i], x1[j], y1[j], 8);
+            const iNode = residueToNode.get(i);
+            const jNode = residueToNode.get(j);
+            const arcPoints = generateArcPoints(x1[iNode], y1[iNode], x1[jNode], y1[jNode], 8);
+            const isConnected = activeResidue === null || i === activeResidue || j === activeResidue;
+
             return {
                 type: 'scatter',
                 mode: 'lines',
                 x: arcPoints.x,
                 y: arcPoints.y,
                 line: { color: '#3B75AF', width: w * w * 30, shape: 'spline' },
+                opacity: isConnected ? 1 : 0.12,
                 showlegend: false,
                 hoverinfo: 'none',
             };
         });
 
+        const centerResetPlot = {
+            type: 'scatter',
+            mode: 'markers',
+            x: [0],
+            y: [0],
+            marker: { size: 40, color: 'rgba(0,0,0,0)', line: { width: 0 } },
+            showlegend: false,
+            hoverinfo: 'none',
+            name: CENTER_RESET_TRACE_NAME,
+        };
+
         // Combine both circles and edges in a single plot data
-        setPlotData([...curves, nodePlot1, nodePlot2]);
-    }, [nodes, edges, radius1, radius2]);
+        return [...curves, centerResetPlot, nodePlot1, nodePlot2];
+    }, [activeResidue, edges, radius1, radius2, residueIds]);
 
     // Function to generate points on an arc
     function generateArcPoints(x1, y1, x2, y2, n) {
@@ -116,6 +162,16 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
         return { x, y };
     }
 
+    function getResidueFromEvent(data) {
+        const point = data?.points?.[0];
+        if (!point || point.data?.name !== RESIDUE_TRACE_NAME) return null;
+        return point.customdata === undefined ? null : point.customdata;
+    }
+
+    function clickedCenter(data) {
+        return data?.points?.some(point => point.data?.name === CENTER_RESET_TRACE_NAME);
+    }
+
     return (
         <Plot
             data={plotData}
@@ -143,6 +199,28 @@ export const ChordDiagram = ({ nodes, edges, radius1, radius2 }) => {
             }}
             useResizeHandler={true}
             style={{ width: "100%", height: "100%" }}
+            onHover={(data) => {
+                if (pinnedResidue !== null) return;
+
+                const residue = getResidueFromEvent(data);
+                if (residue !== null) setHoveredResidue(residue);
+            }}
+            onUnhover={() => {
+                if (pinnedResidue === null) setHoveredResidue(null);
+            }}
+            onClick={(data) => {
+                if (clickedCenter(data)) {
+                    setPinnedResidue(null);
+                    setHoveredResidue(null);
+                    return;
+                }
+
+                const residue = getResidueFromEvent(data);
+                if (residue === null) return;
+
+                setPinnedResidue(currentResidue => currentResidue === residue ? null : residue);
+                setHoveredResidue(null);
+            }}
         />
     );
 };

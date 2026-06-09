@@ -1,17 +1,40 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Plot from 'react-plotly.js';
+
+const MIN_CIRCLE_PAIR_COUNT = 20;
 
 const ContactMap = ({
     chain, mappedDi, structureContacts,
     selectedPairs = null, selectedContacts = null,
-    onPairSelect = null, onContactSelect = null
+    onPairSelect = null, onContactSelect = null,
+    onDisplayedPairsChange = null
 }) => {
     const maxDiCount = mappedDi.mapped_di.length;
-    const [diCount, setDiCount] = useState(mappedDi ? Math.floor(Math.sqrt(maxDiCount * 4.5)) : 0);
+    const defaultDiCount = useMemo(() => mappedDi ? Math.floor(Math.sqrt(maxDiCount * 4.5)) : 0, [mappedDi, maxDiCount]);
+    const [diCount, setDiCount] = useState(defaultDiCount);
     const [showPairs, setShowPairs] = useState(true);
     const [showContacts, setShowContacts] = useState(true);
     const [showHits, setShowHits] = useState(true);
     // TODO: Handle duplication of selected contacts better
+
+    useEffect(() => {
+        setDiCount(defaultDiCount);
+    }, [defaultDiCount]);
+
+    const circlePairIndexes = useMemo(() => {
+        if (!mappedDi) return [];
+
+        const pairCount = Math.min(
+            maxDiCount,
+            Math.max(MIN_CIRCLE_PAIR_COUNT, Number(diCount) || 0)
+        );
+
+        return mappedDi.mapped_di.slice(0, pairCount).map((_, index) => index);
+    }, [diCount, mappedDi, maxDiCount]);
+
+    useEffect(() => {
+        if (onDisplayedPairsChange) onDisplayedPairsChange(circlePairIndexes);
+    }, [circlePairIndexes, onDisplayedPairsChange]);
 
     const {plotData, hitCount} = useMemo(() => {
         let res = [];

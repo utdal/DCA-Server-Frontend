@@ -9,8 +9,6 @@ import { Task, DCA, MappedDi, StructureContacts } from '../backend/api';
 import MolViewer from '../components/MolViewer';
 import { CirclePlot } from '../components/CirclePlot';
 import ChainSelector from '../components/ChainSelector';
-import { use } from 'react';
-import { faWindows } from '@fortawesome/free-brands-svg-icons';
 
 const CoevolvingPairsResults = () => {
     const [loading, setLoading] = useState(true);
@@ -22,6 +20,7 @@ const CoevolvingPairsResults = () => {
     const [chain, setChain] = useState('A'); //How to set default value?
     const [selectedDI, setSelectedDI] = useState(null);
     const [selectedContacts, setSelectedContacts] = useState(null);
+    const [displayedDI, setDisplayedDI] = useState(null);
     const [collapsedSections, setCollapsedSections] = useState({
         contactMap: false,
         diPairs: false,
@@ -234,6 +233,7 @@ const CoevolvingPairsResults = () => {
                                     selectedContacts={selectedContacts}
                                     onPairSelect={setSelectedDI}
                                     onContactSelect={setSelectedContacts}
+                                    onDisplayedPairsChange={setDisplayedDI}
                                 />
                             </div>
                         </div>
@@ -288,7 +288,7 @@ const CoevolvingPairsResults = () => {
                                     ...(collapsedSections.circlePlot ? styles.contentCollapsed : styles.contentExpanded),
                                 }}
                             >
-                                <CirclePlot mappedDi={mappedDi} chain={chain} selectedDI={selectedDI}/>
+                                <CirclePlot mappedDi={mappedDi} chain={chain} selectedDI={selectedDI} displayedDI={displayedDI}/>
                             </div>
                         </div>
                         <div style={styles.section}>
