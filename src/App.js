@@ -35,7 +35,6 @@ import { Link } from 'react-router-dom';
 import { width } from '@fortawesome/free-brands-svg-icons/fa42Group';
 import LabTeam from './pages/Labdirectory';
 import PublicationsPage from './pages/Publications';
-import About from './pages/About';
 
 function App() {
   return (
@@ -56,7 +55,6 @@ function App() {
           <Route path="/tasks" element={<ViewTasks />} />
           <Route path="/test" element={<ApiTest />} />
           <Route path="/publications" element={<PublicationsPage />} />
-          <Route path="/about" element={<About />} />
           <Route path="/" element={
           <>
          
